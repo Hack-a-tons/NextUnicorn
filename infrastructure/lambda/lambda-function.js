@@ -1,6 +1,12 @@
 const { SageMakerRuntimeClient, InvokeEndpointCommand } = require('@aws-sdk/client-sagemaker-runtime');
+const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/client-s3');
+const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
+const crypto = require('crypto');
 
-const client = new SageMakerRuntimeClient({ region: 'us-east-1' });
+const sagemakerClient = new SageMakerRuntimeClient({ region: 'us-east-1' });
+const s3Client = new S3Client({ region: 'us-east-1' });
+
+const BUCKET_NAME = 'instantid-models-053787342835';
 
 exports.handler = async (event) => {
     try {
@@ -23,8 +29,48 @@ exports.handler = async (event) => {
             })
         });
         
-        const result = await client.send(command);
+        const result = await sagemakerClient.send(command);
         const response = JSON.parse(Buffer.from(result.Body).toString());
+        
+        // Extract base64 image data
+        let imageData;
+        if (response.generated_images && response.generated_images[0]) {
+            imageData = response.generated_images[0];
+        } else if (response.images && response.images[0]) {
+            imageData = response.images[0];
+        } else if (typeof response === 'string') {
+            imageData = response;
+        } else {
+            throw new Error('No image data found in response');
+        }
+        
+        // Remove data URL prefix if present
+        if (imageData.startsWith('data:image/')) {
+            imageData = imageData.split(',')[1];
+        }
+        
+        // Generate unique filename
+        const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+        const randomId = crypto.randomBytes(8).toString('hex');
+        const filename = `generated-images/${timestamp}-${randomId}.jpg`;
+        
+        // Upload to S3
+        const uploadCommand = new PutObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: filename,
+            Body: Buffer.from(imageData, 'base64'),
+            ContentType: 'image/jpeg'
+        });
+        
+        await s3Client.send(uploadCommand);
+        
+        // Generate presigned URL (valid for 24 hours)
+        const getObjectCommand = new GetObjectCommand({
+            Bucket: BUCKET_NAME,
+            Key: filename
+        });
+        
+        const presignedUrl = await getSignedUrl(s3Client, getObjectCommand, { expiresIn: 86400 });
         
         return {
             statusCode: 200,
@@ -33,12 +79,12 @@ exports.handler = async (event) => {
                 'Access-Control-Allow-Origin': '*'
             },
             body: JSON.stringify({
-                imageUrl: response.generated_images?.[0] || response.images?.[0] || response.image || "data:image/jpeg;base64," + response,
+                imageUrl: presignedUrl,
                 status: "success",
-                message: "Image generated successfully with Stable Diffusion XL",
+                message: "Image generated and saved to S3 successfully",
                 prompt: prompt,
                 inputs: { personImage, clothingImages, placeImage },
-                note: "Currently using SDXL text-to-image. InstantID integration coming soon."
+                note: "Image URL valid for 24 hours. Currently using SDXL text-to-image."
             })
         };
     } catch (error) {
