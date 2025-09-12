@@ -6,36 +6,21 @@ exports.handler = async (event) => {
     try {
         const { personImage, clothingImages, placeImage } = JSON.parse(event.body);
         
-        // For now, return a mock response since we don't have the actual InstantID model
-        // TODO: Replace with actual SageMaker call once model is properly deployed
-        
-        /*
         const command = new InvokeEndpointCommand({
-            EndpointName: 'instantid-endpoint',
+            EndpointName: 'instantid-endpoint-v2',
             ContentType: 'application/json',
             Body: JSON.stringify({
-                person_image: personImage,
-                clothing_images: clothingImages,
-                place_image: placeImage,
-                prompt: "photorealistic person wearing clothes in location"
+                inputs: {
+                    person_image: personImage,
+                    clothing_images: clothingImages,
+                    place_image: placeImage,
+                    prompt: "photorealistic person wearing clothes in location"
+                }
             })
         });
         
         const result = await client.send(command);
-        const generatedImage = JSON.parse(Buffer.from(result.Body).toString());
-        */
-        
-        // Mock response for testing
-        const mockResponse = {
-            imageUrl: "https://example.com/generated-composite-image.jpg",
-            status: "success",
-            message: "Image composition completed successfully",
-            inputs: {
-                personImage,
-                clothingImages,
-                placeImage
-            }
-        };
+        const response = JSON.parse(Buffer.from(result.Body).toString());
         
         return {
             statusCode: 200,
@@ -43,16 +28,25 @@ exports.handler = async (event) => {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*'
             },
-            body: JSON.stringify(mockResponse)
+            body: JSON.stringify({
+                imageUrl: response.generated_image || response.image_url || response.url,
+                status: "success",
+                message: "Image composition completed successfully",
+                inputs: { personImage, clothingImages, placeImage }
+            })
         };
     } catch (error) {
+        console.error('Error:', error);
         return {
             statusCode: 500,
             headers: {
                 'Content-Type': 'application/json',
                 'Access-Control-Allow-Origin': '*'
             },
-            body: JSON.stringify({ error: error.message })
+            body: JSON.stringify({ 
+                error: error.message,
+                status: "error"
+            })
         };
     }
 };
