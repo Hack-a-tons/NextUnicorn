@@ -172,15 +172,209 @@ const generateImage = async (personImg, clothingImgs, placeImg) => {
 - **API Gateway**: $3.50 per million API calls
 - **S3 Storage**: $0.023/GB/month (model storage)
 
+## AWS Services Used
+
+### Core Services (Currently Implemented)
+
+#### 1. **Amazon SageMaker**
+- **Purpose**: ML model hosting and inference
+- **Resources**:
+  - Model: `instantid-model-v2` (InstantID for image composition)
+  - Endpoint: `instantid-endpoint-v2` (ml.g5.xlarge GPU instance)
+  - Notebook Instance: `instantid-downloader` (ml.t3.medium for model processing)
+- **Cost**: ~$1.50/hour for inference endpoint
+- **Usage**: Hosts InstantID model for photorealistic image generation
+
+#### 2. **AWS Lambda**
+- **Purpose**: Serverless API processing
+- **Resources**:
+  - Function: `image-composition` (Node.js 18.x runtime)
+  - Memory: 128 MB, Timeout: 30 seconds
+- **Cost**: $0.20 per 1M requests + compute time
+- **Usage**: Processes API requests and calls SageMaker endpoint
+
+#### 3. **Amazon API Gateway**
+- **Purpose**: REST API management and routing
+- **Resources**:
+  - API: `vag36c2ztf` (image-composition-api)
+  - Endpoint: `/generate` (POST method)
+- **Cost**: $3.50 per million API calls
+- **Usage**: Public API endpoint for mobile/web clients
+
+#### 4. **Amazon S3**
+- **Purpose**: Object storage for models and generated images
+- **Resources**:
+  - Bucket: `instantid-models-053787342835`
+  - Objects: `model.tar.gz` (4.2GB InstantID model)
+- **Cost**: $0.023/GB/month storage + data transfer
+- **Usage**: Stores ML model artifacts and generated images
+
+#### 5. **AWS IAM**
+- **Purpose**: Identity and access management
+- **Resources**:
+  - Roles: `SageMakerRole`, `LambdaExecutionRole`
+  - Policies: Custom policies for service permissions
+- **Cost**: Free
+- **Usage**: Manages permissions between AWS services
+
+#### 6. **Amazon CloudWatch**
+- **Purpose**: Monitoring and logging
+- **Resources**:
+  - Log Groups: `/aws/lambda/image-composition`, `/aws/sagemaker/Endpoints/instantid-endpoint-v2`
+  - Metrics: API Gateway, Lambda, SageMaker metrics
+- **Cost**: $0.50/GB ingested + $0.03/GB stored
+- **Usage**: Application monitoring and debugging
+
+### Future Services (Planned Implementation)
+
+#### 7. **Amazon Cognito** (Authentication)
+- **Purpose**: User authentication and API security
+- **Planned Usage**: 
+  - User pools for mobile/web app authentication
+  - API Gateway authorizers for secure access
+  - JWT token validation
+- **Estimated Cost**: $0.0055 per monthly active user
+
+#### 8. **Amazon CloudFront** (CDN)
+- **Purpose**: Global content delivery and caching
+- **Planned Usage**:
+  - Cache generated images globally
+  - Reduce API latency for international users
+  - Serve static assets for web clients
+- **Estimated Cost**: $0.085/GB data transfer + $0.0075 per 10,000 requests
+
+#### 9. **Amazon DynamoDB** (Database)
+- **Purpose**: Store user data and generation history
+- **Planned Usage**:
+  - User profiles and preferences
+  - Image generation history and metadata
+  - Usage analytics and billing data
+- **Estimated Cost**: $0.25/GB storage + $1.25 per million read/write requests
+
+#### 10. **Amazon SQS** (Message Queue)
+- **Purpose**: Asynchronous processing for long-running tasks
+- **Planned Usage**:
+  - Queue image generation requests
+  - Handle batch processing
+  - Decouple API from ML processing
+- **Estimated Cost**: $0.40 per million requests
+
+#### 11. **Amazon SNS** (Notifications)
+- **Purpose**: Push notifications and alerts
+- **Planned Usage**:
+  - Notify users when image generation completes
+  - Send system alerts and monitoring notifications
+  - Mobile push notifications
+- **Estimated Cost**: $0.50 per million notifications
+
+#### 12. **AWS Step Functions** (Workflow Orchestration)
+- **Purpose**: Complex image processing workflows
+- **Planned Usage**:
+  - Multi-step image processing pipelines
+  - Error handling and retry logic
+  - Coordinate multiple ML models
+- **Estimated Cost**: $25 per million state transitions
+
+#### 13. **Amazon Rekognition** (Image Analysis)
+- **Purpose**: Content moderation and image analysis
+- **Planned Usage**:
+  - Detect inappropriate content in uploaded images
+  - Extract metadata from images
+  - Face detection and analysis
+- **Estimated Cost**: $1.00 per 1,000 images analyzed
+
+#### 14. **AWS Secrets Manager** (Security)
+- **Purpose**: Secure storage of API keys and secrets
+- **Planned Usage**:
+  - Store third-party API keys
+  - Database connection strings
+  - Encryption keys for sensitive data
+- **Estimated Cost**: $0.40 per secret per month
+
+#### 15. **Amazon ElastiCache** (Caching)
+- **Purpose**: In-memory caching for performance
+- **Planned Usage**:
+  - Cache frequently requested images
+  - Store user session data
+  - Reduce database load
+- **Estimated Cost**: $0.017/hour for cache.t3.micro
+
+#### 16. **AWS WAF** (Web Application Firewall)
+- **Purpose**: API security and DDoS protection
+- **Planned Usage**:
+  - Rate limiting for API endpoints
+  - Block malicious requests
+  - Geographic restrictions if needed
+- **Estimated Cost**: $1.00 per web ACL + $0.60 per million requests
+
+### Development & Operations Services
+
+#### 17. **AWS CodePipeline** (CI/CD)
+- **Purpose**: Automated deployment pipeline
+- **Planned Usage**:
+  - Automated testing and deployment
+  - Infrastructure as Code updates
+  - Multi-environment management
+- **Estimated Cost**: $1.00 per active pipeline per month
+
+#### 18. **AWS CodeBuild** (Build Service)
+- **Purpose**: Build and test automation
+- **Planned Usage**:
+  - Compile and package Lambda functions
+  - Run automated tests
+  - Build Docker images for custom containers
+- **Estimated Cost**: $0.005 per build minute
+
+#### 19. **Amazon ECR** (Container Registry)
+- **Purpose**: Store custom Docker images
+- **Planned Usage**:
+  - Custom SageMaker inference containers
+  - Lambda container images
+  - Version control for ML models
+- **Estimated Cost**: $0.10/GB per month
+
+#### 20. **AWS X-Ray** (Distributed Tracing)
+- **Purpose**: Application performance monitoring
+- **Planned Usage**:
+  - Trace requests across services
+  - Identify performance bottlenecks
+  - Debug distributed applications
+- **Estimated Cost**: $5.00 per million traces
+
 ## Resources Created
 
 ### AWS Account: 053787342835
 - **S3 Bucket**: `instantid-models-053787342835`
 - **SageMaker Model**: `instantid-model-v2`
 - **SageMaker Endpoint**: `instantid-endpoint-v2` (ml.g5.xlarge)
+- **SageMaker Notebook**: `instantid-downloader` (ml.t3.medium)
 - **Lambda Function**: `image-composition`
 - **API Gateway**: `vag36c2ztf` (image-composition-api)
 - **IAM Roles**: `SageMakerRole`, `LambdaExecutionRole`
+- **CloudWatch Logs**: Multiple log groups for monitoring
+
+## Total Estimated Monthly Costs
+
+### Current Implementation (MVP)
+- **SageMaker Endpoint**: $1,080/month (24/7 operation)
+- **Lambda**: $5-20/month (depending on usage)
+- **API Gateway**: $10-50/month (depending on traffic)
+- **S3**: $1/month (model storage)
+- **CloudWatch**: $5-15/month (logs and metrics)
+- **Total MVP**: ~$1,100-1,200/month
+
+### Full Production Implementation
+- **Core Services**: $1,200/month
+- **Additional Services**: $200-500/month
+- **Data Transfer**: $50-200/month
+- **Total Production**: ~$1,500-2,000/month
+
+### Cost Optimization Strategies
+1. **SageMaker**: Use auto-scaling and scheduled scaling
+2. **Lambda**: Optimize memory allocation and execution time
+3. **S3**: Use Intelligent Tiering for cost optimization
+4. **CloudWatch**: Set up log retention policies
+5. **Reserved Instances**: For predictable workloads
 
 ## Why InstantID?
 
