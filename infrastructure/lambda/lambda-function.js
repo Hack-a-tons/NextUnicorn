@@ -3,6 +3,7 @@ const { S3Client, PutObjectCommand, GetObjectCommand } = require('@aws-sdk/clien
 const { RekognitionClient, DetectLabelsCommand, DetectFacesCommand } = require('@aws-sdk/client-rekognition');
 const { getSignedUrl } = require('@aws-sdk/s3-request-presigner');
 const crypto = require('crypto');
+const https = require('https');
 
 const sagemakerClient = new SageMakerRuntimeClient({ region: 'us-east-1' });
 const s3Client = new S3Client({ region: 'us-east-1' });
@@ -10,56 +11,98 @@ const rekognitionClient = new RekognitionClient({ region: 'us-east-1' });
 
 const BUCKET_NAME = 'instantid-models-053787342835';
 
-async function analyzeImageFromUrl(imageUrl) {
+async function downloadImage(url) {
+    return new Promise((resolve, reject) => {
+        https.get(url, (response) => {
+            const chunks = [];
+            response.on('data', (chunk) => chunks.push(chunk));
+            response.on('end', () => resolve(Buffer.concat(chunks)));
+            response.on('error', reject);
+        }).on('error', reject);
+    });
+}
+
+async function analyzeImageWithRekognition(imageBuffer) {
     try {
-        // For demo, we'll analyze based on URL patterns
-        // In production, you'd download and analyze the actual image
-        const analysis = {
-            person: [],
-            clothing: [],
-            place: []
+        const [labelsResult, facesResult] = await Promise.all([
+            rekognitionClient.send(new DetectLabelsCommand({
+                Image: { Bytes: imageBuffer },
+                MaxLabels: 10,
+                MinConfidence: 70
+            })),
+            rekognitionClient.send(new DetectFacesCommand({
+                Image: { Bytes: imageBuffer },
+                Attributes: ['ALL']
+            }))
+        ]);
+
+        const labels = labelsResult.Labels?.map(label => label.Name.toLowerCase()) || [];
+        const faces = facesResult.FaceDetails || [];
+        
+        return {
+            labels,
+            faces: faces.length,
+            demographics: faces.length > 0 ? {
+                ageRange: faces[0].AgeRange,
+                gender: faces[0].Gender?.Value,
+                emotions: faces[0].Emotions?.slice(0, 3).map(e => e.Type.toLowerCase())
+            } : null
         };
-        
-        if (imageUrl.includes('person') || imageUrl.includes('face')) {
-            analysis.person = ['person', 'face', 'portrait'];
-        }
-        if (imageUrl.includes('shirt') || imageUrl.includes('clothing')) {
-            analysis.clothing = ['shirt', 'clothing', 'fashion'];
-        }
-        if (imageUrl.includes('beach') || imageUrl.includes('place')) {
-            analysis.place = ['beach', 'outdoor', 'scenic'];
-        }
-        
-        return analysis;
     } catch (error) {
-        console.error('Image analysis error:', error);
-        return { person: [], clothing: [], place: [] };
+        console.error('Rekognition analysis error:', error);
+        return { labels: [], faces: 0, demographics: null };
     }
 }
 
 function createEnhancedPrompt(personAnalysis, clothingAnalysis, placeAnalysis) {
-    const personDesc = personAnalysis.person.length > 0 ? 
-        `a ${personAnalysis.person.join(', ')}` : 'a person';
+    // Person description
+    let personDesc = 'a person';
+    if (personAnalysis.demographics) {
+        const { gender, ageRange, emotions } = personAnalysis.demographics;
+        const age = ageRange ? `${Math.round((ageRange.Low + ageRange.High) / 2)}-year-old` : '';
+        const mood = emotions && emotions.length > 0 ? emotions[0] : '';
+        personDesc = `a ${age} ${gender || 'person'}${mood ? ` with ${mood} expression` : ''}`;
+    }
     
-    const clothingDesc = clothingAnalysis.clothing.length > 0 ? 
-        `wearing ${clothingAnalysis.clothing.join(', ')}` : 'wearing fashionable clothing';
+    // Clothing description
+    const clothingLabels = clothingAnalysis.labels.filter(label => 
+        ['clothing', 'shirt', 'dress', 'jacket', 'pants', 'fashion', 'apparel'].some(term => 
+            label.includes(term)
+        )
+    );
+    const clothingDesc = clothingLabels.length > 0 ? 
+        `wearing ${clothingLabels.slice(0, 3).join(', ')}` : 'wearing fashionable clothing';
     
-    const placeDesc = placeAnalysis.place.length > 0 ? 
-        `in a ${placeAnalysis.place.join(', ')} setting` : 'in a beautiful location';
+    // Place description
+    const placeLabels = placeAnalysis.labels.filter(label => 
+        ['outdoor', 'indoor', 'beach', 'city', 'nature', 'building', 'landscape', 'scenery'].some(term => 
+            label.includes(term)
+        )
+    );
+    const placeDesc = placeLabels.length > 0 ? 
+        `in a ${placeLabels.slice(0, 3).join(', ')} setting` : 'in a beautiful location';
     
-    return `A photorealistic image of ${personDesc} ${clothingDesc} ${placeDesc}. High quality, detailed, professional photography style, perfect lighting, sharp focus.`;
+    return `A photorealistic portrait of ${personDesc} ${clothingDesc} ${placeDesc}. Professional photography, high quality, detailed, perfect lighting, sharp focus, cinematic composition.`;
 }
 
 exports.handler = async (event) => {
     try {
         const { personImage, clothingImages, placeImage } = JSON.parse(event.body);
         
-        // Analyze input images to create better prompt
-        console.log('Analyzing input images...');
+        console.log('Downloading and analyzing images...');
+        
+        // Download and analyze images in parallel
+        const [personBuffer, clothingBuffer, placeBuffer] = await Promise.all([
+            downloadImage(personImage).catch(() => null),
+            downloadImage(clothingImages[0] || personImage).catch(() => null),
+            downloadImage(placeImage).catch(() => null)
+        ]);
+        
+        // Analyze images with Rekognition
         const [personAnalysis, clothingAnalysis, placeAnalysis] = await Promise.all([
-            analyzeImageFromUrl(personImage),
-            analyzeImageFromUrl(clothingImages[0] || ''),
-            analyzeImageFromUrl(placeImage)
+            personBuffer ? analyzeImageWithRekognition(personBuffer) : { labels: [], faces: 0 },
+            clothingBuffer ? analyzeImageWithRekognition(clothingBuffer) : { labels: [], faces: 0 },
+            placeBuffer ? analyzeImageWithRekognition(placeBuffer) : { labels: [], faces: 0 }
         ]);
         
         // Create enhanced prompt based on analysis
@@ -72,8 +115,8 @@ exports.handler = async (event) => {
             Body: JSON.stringify({
                 inputs: prompt,
                 parameters: {
-                    num_inference_steps: 25,
-                    guidance_scale: 8.0,
+                    num_inference_steps: 30,
+                    guidance_scale: 8.5,
                     width: 1024,
                     height: 1024
                 }
@@ -132,15 +175,23 @@ exports.handler = async (event) => {
             body: JSON.stringify({
                 imageUrl: presignedUrl,
                 status: "success",
-                message: "Image generated with enhanced prompt analysis",
+                message: "Image generated with AI-powered analysis",
                 prompt: prompt,
                 analysis: {
-                    person: personAnalysis,
-                    clothing: clothingAnalysis,
-                    place: placeAnalysis
+                    person: {
+                        labels: personAnalysis.labels.slice(0, 5),
+                        faces: personAnalysis.faces,
+                        demographics: personAnalysis.demographics
+                    },
+                    clothing: {
+                        labels: clothingAnalysis.labels.slice(0, 5)
+                    },
+                    place: {
+                        labels: placeAnalysis.labels.slice(0, 5)
+                    }
                 },
                 inputs: { personImage, clothingImages, placeImage },
-                note: "Enhanced with image analysis. Image URL valid for 24 hours."
+                note: "Enhanced with Amazon Rekognition analysis. Image URL valid for 24 hours."
             })
         };
     } catch (error) {
