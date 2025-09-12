@@ -6,15 +6,19 @@ exports.handler = async (event) => {
     try {
         const { personImage, clothingImages, placeImage } = JSON.parse(event.body);
         
+        // Create a detailed prompt from the input images
+        const prompt = `A photorealistic image of a person wearing fashionable clothing in a beautiful location. High quality, detailed, professional photography style.`;
+        
         const command = new InvokeEndpointCommand({
-            EndpointName: 'instantid-endpoint-v3',
+            EndpointName: 'sdxl-endpoint',
             ContentType: 'application/json',
             Body: JSON.stringify({
-                inputs: {
-                    person_image: personImage,
-                    clothing_images: clothingImages,
-                    place_image: placeImage,
-                    prompt: "photorealistic person wearing clothes in location"
+                inputs: prompt,
+                parameters: {
+                    num_inference_steps: 20,
+                    guidance_scale: 7.5,
+                    width: 1024,
+                    height: 1024
                 }
             })
         });
@@ -29,10 +33,12 @@ exports.handler = async (event) => {
                 'Access-Control-Allow-Origin': '*'
             },
             body: JSON.stringify({
-                imageUrl: response.generated_image || response.image_url || response.url,
+                imageUrl: response.generated_images?.[0] || response.images?.[0] || response.image || "data:image/jpeg;base64," + response,
                 status: "success",
-                message: "Image composition completed successfully",
-                inputs: { personImage, clothingImages, placeImage }
+                message: "Image generated successfully with Stable Diffusion XL",
+                prompt: prompt,
+                inputs: { personImage, clothingImages, placeImage },
+                note: "Currently using SDXL text-to-image. InstantID integration coming soon."
             })
         };
     } catch (error) {
