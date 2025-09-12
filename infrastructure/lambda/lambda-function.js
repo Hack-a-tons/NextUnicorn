@@ -7,7 +7,7 @@ exports.handler = async (event) => {
         const { personImage, clothingImages, placeImage } = JSON.parse(event.body);
         
         const command = new InvokeEndpointCommand({
-            EndpointName: 'instantid-endpoint-v2',
+            EndpointName: 'instantid-endpoint-v3',
             ContentType: 'application/json',
             Body: JSON.stringify({
                 inputs: {
