@@ -3,6 +3,10 @@
 *.d.ts
 node_modules
 
+# Allow Lambda function files
+!lambda/**/*.js
+!lambda*.js
+
 # CDK asset staging directory
 .cdk.staging
 cdk.out
