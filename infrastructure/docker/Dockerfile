@@ -17,14 +17,15 @@ RUN apt-get update && apt-get install -y \
 
 # Install Python dependencies
 RUN pip install --no-cache-dir \
+    huggingface_hub==0.17.3 \
     diffusers==0.21.4 \
     transformers==4.35.2 \
     accelerate==0.24.1 \
     controlnet-aux==0.0.7 \
     opencv-python==4.8.1.78 \
     insightface==0.7.3 \
-    onnxruntime-gpu==1.16.3 \
-    xformers==0.0.22.post7 \
+    onnxruntime-gpu \
+    xformers \
     flask==2.3.3 \
     pillow==10.1.0 \
     numpy==1.24.4
