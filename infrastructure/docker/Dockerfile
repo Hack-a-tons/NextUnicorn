@@ -32,9 +32,13 @@ RUN pip install --no-cache-dir \
 # Set working directory
 WORKDIR /opt/ml
 
-# Copy inference code
+# Copy inference code and serve script
 COPY code/ code/
 COPY model/ model/
+COPY serve /usr/local/bin/serve
+
+# Make serve script executable
+RUN chmod +x /usr/local/bin/serve
 
 # Set environment variables
 ENV PYTHONPATH=/opt/ml/code
@@ -44,4 +48,4 @@ ENV MODEL_PATH=/opt/ml/model
 EXPOSE 8080
 
 # Start the inference server
-CMD ["python", "code/inference.py"]
+CMD ["serve"]
