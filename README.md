@@ -18,22 +18,28 @@ Returns a photorealistic image of the person wearing the specified clothing in t
 - **SageMaker**: InstantID model for image composition
 - **S3**: Image storage and model artifacts
 
-## Current Status ✅
+## Current Status 🔄
 
 ### Completed Steps:
 1. ✅ **AWS Account Setup**: Configured credentials and permissions
-2. ✅ **SageMaker Model**: Downloaded and deployed InstantID model to S3
-3. ✅ **Lambda Function**: Created with AWS SDK v3 for SageMaker integration
-4. ✅ **API Gateway**: REST API with POST /generate endpoint
-5. ✅ **IAM Roles**: Created LambdaExecutionRole and SageMakerRole with proper permissions
-6. ✅ **Model Upload**: InstantID model (4.2GB) uploaded to S3
+2. ✅ **Lambda Function**: Advanced function with Rekognition analysis for SDXL
+3. ✅ **API Gateway**: REST API with POST /generate endpoint (working with SDXL)
+4. ✅ **IAM Roles**: Created LambdaExecutionRole and SageMakerRole with proper permissions
+5. ✅ **Docker Build**: InstantID container built and pushed to ECR
+6. ✅ **CodeBuild**: Automated Docker build pipeline configured
 7. ✅ **Infrastructure**: All AWS resources created and configured
 
 ### Currently Deploying:
-- 🔄 **SageMaker Endpoint**: `instantid-endpoint-v2` on ml.g5.xlarge (GPU instance)
+- 🔄 **SageMaker Endpoint**: `instantid-docker-endpoint-v2` on ml.g5.xlarge (GPU instance)
   - Status: Creating (10-15 minutes)
-  - Model: InstantID from HuggingFace
-  - Instance: GPU-enabled for image generation
+  - Model: InstantID in custom Docker container
+  - Instance: GPU-enabled for true image composition
+  - Fixed: Docker serve script issue resolved
+
+### Working Components:
+- ✅ **API Endpoint**: `https://vag36c2ztf.execute-api.us-east-1.amazonaws.com/prod/generate`
+- ✅ **SDXL Fallback**: Currently using SDXL with Rekognition analysis
+- ✅ **Image Analysis**: Downloads images, analyzes with Rekognition, creates intelligent prompts
 
 ## API Endpoint
 
@@ -119,18 +125,19 @@ aws apigateway put-integration --type AWS_PROXY
 ## Next Steps (TODO)
 
 ### 1. Complete SageMaker Endpoint Deployment
-- ⏳ Wait for `instantid-endpoint-v2` to reach "InService" status
-- ✅ Verify endpoint is working with test requests
+- ⏳ Wait for `instantid-docker-endpoint-v2` to reach "InService" status
+- ✅ Fixed Docker serve script issue
+- ✅ Rebuilt and redeployed container via CodeBuild
 
 ### 2. Update Lambda Function
 ```bash
-# Update Lambda to use new endpoint name
+# Update Lambda to use new InstantID endpoint
 aws lambda update-function-code --function-name image-composition
 ```
 
-### 3. Test Real Image Generation
+### 3. Test Real Image Composition
 ```bash
-# Test with actual image URLs
+# Test with actual image URLs for true composition
 curl -X POST https://vag36c2ztf.execute-api.us-east-1.amazonaws.com/prod/generate \
   -H "Content-Type: application/json" \
   -d '{
@@ -345,12 +352,13 @@ const generateImage = async (personImg, clothingImgs, placeImg) => {
 
 ### AWS Account: 053787342835
 - **S3 Bucket**: `instantid-models-053787342835`
-- **SageMaker Model**: `instantid-model-v2`
-- **SageMaker Endpoint**: `instantid-endpoint-v2` (ml.g5.xlarge)
-- **SageMaker Notebook**: `instantid-downloader` (ml.t3.medium)
+- **SageMaker Model**: `instantid-docker-model`
+- **SageMaker Endpoint**: `instantid-docker-endpoint-v2` (ml.g5.xlarge)
 - **Lambda Function**: `image-composition`
 - **API Gateway**: `vag36c2ztf` (image-composition-api)
 - **IAM Roles**: `SageMakerRole`, `LambdaExecutionRole`
+- **ECR Repository**: `instantid-custom`
+- **CodeBuild Project**: `instantid-docker-build`
 - **CloudWatch Logs**: Multiple log groups for monitoring
 
 ## Total Estimated Monthly Costs
