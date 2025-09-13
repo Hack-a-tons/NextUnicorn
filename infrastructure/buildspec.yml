@@ -1,0 +1,38 @@
+version: 0.2
+
+phases:
+  pre_build:
+    commands:
+      - echo "Logging in to Amazon ECR..."
+      - aws ecr get-login-password --region $AWS_DEFAULT_REGION | docker login --username AWS --password-stdin $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com
+      - echo "Creating ECR repository if it does not exist..."
+      - aws ecr create-repository --repository-name instantid-custom --region $AWS_DEFAULT_REGION || true
+  build:
+    commands:
+      - echo "Build started on $(date)"
+      - echo "Downloading InstantID model..."
+      - aws s3 cp s3://instantid-models-053787342835/model_fixed.tar.gz ./
+      - tar -xzf model_fixed.tar.gz
+      - echo "Listing extracted contents..."
+      - ls -la
+      - mkdir -p docker/model
+      - echo "Finding model directory..."
+      - find . -name "*.bin" -o -name "*.safetensors" -o -name "config.json" | head -5
+      - MODEL_DIR=$(find . -name "*.bin" -o -name "*.safetensors" | head -1 | xargs dirname)
+      - echo "Model directory found $MODEL_DIR"
+      - cp -r $MODEL_DIR/* docker/model/ || cp -r */ docker/model/
+      - echo "Building the Docker image..."
+      - cd docker
+      - docker build -t $IMAGE_REPO_NAME:$IMAGE_TAG .
+      - docker tag $IMAGE_REPO_NAME:$IMAGE_TAG $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+  post_build:
+    commands:
+      - echo "Build completed on $(date)"
+      - echo "Pushing the Docker image..."
+      - docker push $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG
+      - echo "Writing image definitions file..."
+      - printf '[{"name":"instantid-container","imageUri":"%s"}]' $AWS_ACCOUNT_ID.dkr.ecr.$AWS_DEFAULT_REGION.amazonaws.com/$IMAGE_REPO_NAME:$IMAGE_TAG > ../imagedefinitions.json
+
+artifacts:
+  files:
+    - imagedefinitions.json
